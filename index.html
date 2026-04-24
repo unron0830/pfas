@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PFAS AI 風險預測與遙測驗證可行性分析</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-snap-type: y mandatory; }
+  body {
+    font-family: "Microsoft JhengHei", "Noto Sans TC", system-ui, -apple-system, sans-serif;
+    background: #ffffff; color: #2c2c2c;
+  }
+  :root {
+    --navy: #1a3a5c; --teal: #3d8b6e; --teal-light: #e8f0ec; --teal-dark: #2d6b54;
+    --orange: #d4845a; --sage-cover: #6b8f7e; --body-text: #333; --light-bg: #f7faf8;
+    --border: #c8d8cf; --red: #c0392b; --green-check: #27ae60;
+  }
+  nav {
+    position: fixed; top: 0; left: 0; width: 100%; z-index: 100;
+    background: rgba(255,255,255,0.95); backdrop-filter: blur(12px);
+    border-bottom: 3px solid var(--teal);
+    display: flex; align-items: center; padding: 0 48px; height: 64px;
+  }
+  nav .logo { font-size: 18px; font-weight: 700; color: var(--navy); white-space: nowrap; }
+  nav .logo span { color: var(--teal); }
+  nav select {
+    margin-left: auto; padding: 10px 20px; border-radius: 6px;
+    background: var(--teal-light); color: var(--navy); border: 2px solid var(--border);
+    font-size: 17px; cursor: pointer; max-width: 480px; font-family: inherit; font-weight: 500;
+  }
+  nav select:focus { outline: none; border-color: var(--teal); }
+  .progress-track { position: fixed; top: 64px; left: 0; width: 100%; height: 4px; background: #e0e0e0; z-index: 99; }
+  .progress-bar { height: 100%; width: 0%; background: linear-gradient(90deg, var(--teal), var(--orange)); transition: width 0.3s; }
+
+  .slide {
+    min-height: 100vh; scroll-snap-align: start;
+    display: flex; flex-direction: column; justify-content: center;
+    padding: 100px 8vw 80px; position: relative;
+    opacity: 0; transform: translateY(30px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+    border-bottom: 1px solid #e8e8e8;
+  }
+  .slide.visible { opacity: 1; transform: translateY(0); }
+  .slide-number {
+    position: absolute; bottom: 36px; right: 8vw;
+    width: 52px; height: 52px; border-radius: 50%;
+    background: var(--orange); color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; font-weight: 800;
+  }
+  .slide::after {
+    content: ""; position: absolute; bottom: 0; left: 0;
+    width: 100%; height: 5px;
+    background: linear-gradient(90deg, var(--teal), var(--teal-dark));
+  }
+  .slide.cover { background: var(--sage-cover); color: white; }
+  .slide.cover::after { background: var(--teal-dark); height: 6px; }
+  .slide.cover h1 { font-size: clamp(36px, 5vw, 54px); font-weight: 800; line-height: 1.35; margin-bottom: 16px; color: white; }
+  .slide.cover .subtitle { color: rgba(255,255,255,0.85); font-size: 22px; }
+  .slide.cover .kpi .num { color: white; }
+  .slide.cover .kpi .unit { color: rgba(255,255,255,0.7); }
+  .slide.cover .kpi { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.2); }
+
+  .slide h1 { font-size: clamp(36px, 5vw, 52px); font-weight: 800; line-height: 1.3; margin-bottom: 16px; color: var(--navy); }
+  .slide h2 { font-size: clamp(30px, 4vw, 42px); font-weight: 700; margin-bottom: 14px; color: var(--navy); }
+  .slide h2::before { content: ""; display: inline-block; width: 6px; height: 32px; background: var(--teal); border-radius: 3px; margin-right: 14px; vertical-align: middle; }
+  .slide .subtitle { font-size: 22px; color: #666; margin-bottom: 40px; line-height: 1.6; }
+  .slide p, .slide li { font-size: 20px; line-height: 1.9; color: var(--body-text); }
+  .slide ul { list-style: none; padding: 0; }
+  .slide ul li { padding: 8px 0 8px 28px; position: relative; }
+  .slide ul li::before { content: "✓"; position: absolute; left: 0; color: var(--teal); font-weight: 700; font-size: 20px; }
+
+  .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 24px; margin-top: 28px; }
+  .card {
+    background: var(--light-bg); border: 2px solid var(--border);
+    border-radius: 12px; padding: 30px; transition: transform 0.3s, border-color 0.3s;
+  }
+  .card:hover { transform: translateY(-3px); border-color: var(--teal); }
+  .card h3 { font-size: 22px; color: var(--teal-dark); margin-bottom: 12px; font-weight: 700; }
+  .card p, .card li { font-size: 18px; line-height: 1.8; }
+  .card .tag { display: inline-block; padding: 5px 14px; border-radius: 6px; font-size: 15px; font-weight: 700; margin-top: 14px; }
+  .tag-green { background: #d4edda; color: #155724; }
+  .tag-yellow { background: #fff3cd; color: #856404; }
+  .tag-red { background: #f8d7da; color: #721c24; }
+  .tag-blue { background: #d1ecf1; color: #0c5460; }
+
+  .styled-table { width: 100%; border-collapse: collapse; margin-top: 24px; font-size: 18px; }
+  .styled-table th { text-align: left; padding: 14px 16px; font-weight: 700; color: white; background: var(--navy); font-size: 17px; }
+  .styled-table th:first-child { border-radius: 8px 0 0 0; }
+  .styled-table th:last-child { border-radius: 0 8px 0 0; }
+  .styled-table td { padding: 14px 16px; border-bottom: 1px solid #e0e0e0; font-size: 17px; line-height: 1.7; }
+  .styled-table tr:nth-child(even) td { background: var(--teal-light); }
+  .styled-table tr:hover td { background: #d5e8dd; }
+
+  .timeline { margin-top: 36px; position: relative; padding-left: 40px; }
+  .timeline::before { content: ""; position: absolute; left: 14px; top: 0; bottom: 0; width: 3px; background: linear-gradient(to bottom, var(--teal), var(--orange)); }
+  .timeline-item { margin-bottom: 36px; position: relative; }
+  .timeline-item::before { content: ""; position: absolute; left: -34px; top: 8px; width: 16px; height: 16px; border-radius: 50%; background: var(--teal); border: 3px solid white; box-shadow: 0 0 0 2px var(--teal); }
+  .timeline-item h4 { font-size: 22px; color: var(--navy); margin-bottom: 6px; font-weight: 700; }
+  .timeline-item p { font-size: 18px; color: #555; line-height: 1.8; }
+
+  .highlight-box { background: var(--teal-light); border-left: 6px solid var(--teal); border-radius: 0 10px 10px 0; padding: 24px 30px; margin-top: 28px; }
+  .highlight-box.warn { background: #fff8f0; border-left-color: var(--orange); }
+  .highlight-box.success { background: #eafaf1; border-left-color: var(--green-check); }
+  .highlight-box.danger { background: #fdf0ef; border-left-color: var(--red); }
+  .highlight-box h4 { font-size: 22px; margin-bottom: 10px; color: var(--navy); font-weight: 700; }
+  .highlight-box p { font-size: 19px; line-height: 1.8; color: var(--body-text); }
+
+  .kpi-row { display: flex; gap: 24px; margin-top: 32px; flex-wrap: wrap; }
+  .kpi { flex: 1; min-width: 180px; text-align: center; background: var(--light-bg); border: 2px solid var(--border); border-radius: 14px; padding: 30px 20px; }
+  .kpi .num { font-size: 48px; font-weight: 800; color: var(--teal-dark); }
+  .kpi .unit { font-size: 18px; color: #666; margin-top: 6px; }
+
+  .compare-bar-wrap { margin-top: 18px; }
+  .compare-bar-item { margin-bottom: 16px; }
+  .compare-bar-label { font-size: 17px; color: var(--body-text); margin-bottom: 6px; display: flex; justify-content: space-between; font-weight: 500; }
+  .compare-bar-track { height: 12px; background: #e8e8e8; border-radius: 6px; overflow: hidden; }
+  .compare-bar-fill { height: 100%; border-radius: 6px; transition: width 1.2s ease; }
+
+  /* 案例卡片含圖片 */
+  .case-card { display: flex; gap: 28px; background: var(--light-bg); border: 2px solid var(--border); border-radius: 12px; padding: 28px; margin-bottom: 24px; align-items: flex-start; }
+  .case-card:hover { border-color: var(--teal); }
+  .case-card .case-img { flex: 0 0 400px; height: 260px; border-radius: 8px; overflow: hidden; background: #ddd; display: flex; align-items: center; justify-content: center; }
+  .case-card .case-img iframe { width: 100%; height: 100%; border: none; border-radius: 8px; }
+  .case-card .case-img img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
+  .case-card .case-img .placeholder { color: #999; font-size: 15px; text-align: center; padding: 20px; }
+  .case-card .case-text { flex: 1; }
+  .case-card .case-text h3 { font-size: 22px; color: var(--navy); margin-bottom: 10px; font-weight: 700; }
+  .case-card .case-text p { font-size: 17px; line-height: 1.8; color: #555; }
+  .case-card .case-text .source-link { display: inline-block; margin-top: 12px; font-size: 15px; color: var(--teal); text-decoration: none; font-weight: 600; }
+  .case-card .case-text .source-link:hover { text-decoration: underline; }
+
+  .footer { text-align: center; padding: 48px 20px; font-size: 16px; color: #999; border-top: 4px solid var(--teal); background: var(--light-bg); }
+
+  @media (max-width: 900px) {
+    .slide { padding: 90px 5vw 60px; }
+    nav { padding: 0 16px; }
+    .case-card { flex-direction: column; }
+    .case-card .case-img { flex: none; width: 100%; height: 200px; }
+    .kpi-row { flex-direction: column; }
+    .card-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="logo"><span>環境部化學物質管理署</span> ｜ PFAS 風險預測與遙測驗證</div>
+  <select id="nav-select" onchange="goSlide(this.value)">
+    <option value="s0">封面</option>
+    <option value="s1">01｜背景與問題定義</option>
+    <option value="s2">02｜PFAS 致癌分類與急迫性</option>
+    <option value="s3">03｜為什麼遙測「直接看 PFAS」行不通</option>
+    <option value="s4">04｜國際案例：AI 風險預測才是正解</option>
+    <option value="s5">05｜文獻回顧：關鍵技術與成果</option>
+    <option value="s6">06｜我們的策略：AI 預測 + 遙測驗證</option>
+    <option value="s7">07｜台灣可用數據與資源盤點</option>
+    <option value="s8">08｜場址類型與驗證優先序</option>
+    <option value="s9">09｜先期驗證計畫設計</option>
+    <option value="s10">10｜預算與時程</option>
+    <option value="s11">11｜預期成果與決策節點</option>
+    <option value="s12">12｜參考文獻</option>
+  </select>
+</nav>
+<div class="progress-track"><div class="progress-bar" id="progressBar"></div></div>
+
+<!-- ===== S0 封面 ===== -->
+<section class="slide cover" id="s0">
+  <h1>PFAS 環境污染<br>AI 風險預測與遙測驗證<br>可行性分析</h1>
+  <p class="subtitle">環境部化學物質管理署 科研計畫前期評估｜2026 年 4 月</p>
+  <div class="kpi-row">
+    <div class="kpi"><div class="num">10,000+</div><div class="unit">PFAS 家族成員數</div></div>
+    <div class="kpi"><div class="num">Group 1</div><div class="unit">IARC 致癌分類（PFOA）</div></div>
+    <div class="kpi"><div class="num">160</div><div class="unit">國環院已完成土壤樣品</div></div>
+    <div class="kpi"><div class="num">99%</div><div class="unit">AI 模型預測 AUROC（美國案例）</div></div>
+  </div>
+</section>
+
+<!-- ===== S1 背景 ===== -->
+<section class="slide" id="s1">
+  <div class="slide-number">1</div>
+  <h2>背景與問題定義</h2>
+  <p class="subtitle">台灣面臨的核心問題：我們不知道 PFAS 污染在哪裡、範圍多大</p>
+  <div class="card-grid">
+    <div class="card">
+      <h3>傳統方法的困境</h3>
+      <ul>
+        <li>LC-MS/MS 單一樣品成本數千元</li>
+        <li>大面積篩查需盲目打格子採樣</li>
+        <li>100 個點花費數十萬，調查週期以月計</li>
+        <li>全台灣 3.6 萬平方公里無法逐點檢測</li>
+      </ul>
+      <span class="tag tag-red">不可能全面普查</span>
+    </div>
+    <div class="card">
+      <h3>我們需要的答案</h3>
+      <p style="font-size:22px;font-weight:600;color:var(--navy);line-height:1.8;">
+        「台灣哪些地方<strong>最可能</strong>有 PFAS 污染？」<br>
+        「應該<strong>優先去哪裡</strong>採樣？」
+      </p>
+      <p style="margin-top:14px;">這不是一個遙測問題，這是一個<strong>風險預測</strong>問題。</p>
+      <span class="tag tag-green">AI 可以回答</span>
+    </div>
+    <div class="card">
+      <h3>正確的工具組合</h3>
+      <p><strong>AI 預測模型</strong>：利用已知資訊（工廠位置、土地使用、水文）產出風險熱點圖</p>
+      <p style="margin-top:10px;"><strong>遙測驗證</strong>：對高風險區飛 UAV / 調閱衛星影像，尋找與 PFAS 濃度的相關性</p>
+      <p style="margin-top:10px;"><strong>LC-MS/MS</strong>：針對熱點精準採樣確認</p>
+      <span class="tag tag-blue">預測 → 驗證 → 確認</span>
+    </div>
+  </div>
+</section>
+
+<!-- ===== S2 致癌 ===== -->
+<section class="slide" id="s2">
+  <div class="slide-number">2</div>
+  <h2>PFAS 致癌分類與急迫性</h2>
+  <p class="subtitle">2023 年 IARC 重新分類，政策窗口已開啟</p>
+  <div class="card-grid">
+    <div class="card">
+      <h3>什麼是 PFAS？</h3>
+      <p>全氟及多氟烷基物質，C-F 鍵極其穩定，環境中無法自然降解，被稱為「永久性化學物質（Forever Chemicals）」。廣泛用於半導體蝕刻、不沾鍋塗層、防水紡織品、消防泡沫（AFFF）。</p>
+    </div>
+    <div class="card">
+      <h3>IARC 致癌分類（2023.11）</h3>
+      <table class="styled-table">
+        <tr><th>物質</th><th>分類</th><th>意義</th></tr>
+        <tr><td><strong>PFOA</strong></td><td style="color:var(--red);font-weight:700;font-size:22px;">Group 1</td><td>確認對人類致癌（腎癌、睪丸癌）</td></tr>
+        <tr><td><strong>PFOS</strong></td><td style="color:var(--orange);font-weight:700;font-size:22px;">Group 2B</td><td>可能對人類致癌</td></tr>
+      </table>
+      <p style="margin-top:14px;font-size:17px;color:#666;">台灣：台北及雲林 8-10 歲兒童，約九成血清中檢出 PFOA 及 PFOS。</p>
+    </div>
+  </div>
+  <div class="highlight-box warn" style="margin-top:28px;">
+    <h4>政策驅動力</h4>
+    <p>Group 1 致癌物 → 監管趨嚴 → 大規模環境篩查需求急增 → 傳統方法成本無法負擔 → <strong>需要智慧化的風險預測工具來指引採樣方向。</strong></p>
+  </div>
+</section>
+
+<!-- ===== S3 遙測行不通 ===== -->
+<section class="slide" id="s3">
+  <div class="slide-number">3</div>
+  <h2>為什麼遙測「直接看 PFAS」行不通</h2>
+  <p class="subtitle">我們逐一檢驗了每條路線，結論是目前都不夠可靠</p>
+  <div class="card-grid">
+    <div class="card" style="border-color:var(--red);">
+      <h3>路線 A：看植被壓力</h3>
+      <p>用高光譜掃描植物葉片，推測土壤有 PFAS。</p>
+      <p style="margin-top:10px;color:var(--red);font-weight:600;font-size:19px;">問題：植物「不舒服」的原因太多——缺水、病蟲害、養分不足、重金屬都會產生類似光譜變化。無法歸因到 PFAS。</p>
+      <span class="tag tag-red">歸因問題無法解決</span>
+    </div>
+    <div class="card" style="border-color:var(--red);">
+      <h3>路線 B：看氣態排放</h3>
+      <p>用 OP-FTIR 偵測空氣中 C-F 鍵的紅外指紋。</p>
+      <p style="margin-top:10px;color:var(--red);font-weight:600;font-size:19px;">問題：氣態 PFAS 主要來自煙囪和焚化爐——你已經知道它們在哪了，不需要遙測去「找」。而且風一吹訊號就飄走，無法對應地面污染。</p>
+      <span class="tag tag-red">解決的不是對的問題</span>
+    </div>
+    <div class="card" style="border-color:var(--red);">
+      <h3>路線 C：看水面薄膜</h3>
+      <p>利用 PFAS 界面活性劑特性，偵測水面偏振異常。</p>
+      <p style="margin-top:10px;color:var(--red);font-weight:600;font-size:19px;">問題：全球尚無人做過系統性驗證。油膜、天然有機物也會產生類似效應。太早期。</p>
+      <span class="tag tag-red">技術太不成熟</span>
+    </div>
+  </div>
+  <div class="highlight-box success" style="margin-top:28px;">
+    <h4>但遙測不是完全沒用</h4>
+    <p>遙測可以作為<strong>輔助驗證手段</strong>——在 AI 預測出高風險區域後，飛 UAV 拍攝 HSI / 多光譜影像，看看有沒有可用的<strong>間接關聯性</strong>。這才是它正確的角色。</p>
+  </div>
+</section>
+
+<!-- ===== S4 國際案例 ===== -->
+<section class="slide" id="s4">
+  <div class="slide-number">4</div>
+  <h2>國際案例：AI 風險預測才是正解</h2>
+  <p class="subtitle">美國 EPA、加州、澳洲政府已在實際應用</p>
+
+  <!-- 案例 1：EWG -->
+  <div class="case-card">
+    <div class="case-img">
+      <div style="width:100%;height:100%;background:linear-gradient(135deg,#1a3a5c,#3d8b6e);display:flex;flex-direction:column;align-items:center;justify-content:center;color:white;padding:20px;text-align:center;">
+        <div style="font-size:64px;font-weight:800;margin-bottom:8px;">9,728</div>
+        <div style="font-size:22px;font-weight:600;">PFAS 污染場址</div>
+        <div style="font-size:16px;opacity:0.8;margin-top:4px;">美國 50 州｜EWG 互動地圖</div>
+        <div style="margin-top:16px;padding:8px 16px;border:2px solid rgba(255,255,255,0.5);border-radius:6px;font-size:14px;">涵蓋飲用水系統、軍事基地、工業場址</div>
+      </div>
+    </div>
+    <div class="case-text">
+      <h3>美國 EWG — PFAS 污染危機互動地圖</h3>
+      <p>環境工作組織（EWG）整合了飲用水檢測、國防部 PFOS/PFOA 報告、UCMR 5 等多源數據，建立全美 9,728 個 PFAS 污染場址的互動地圖。截至 2026 年 2 月，已有 3,539 個場址透過 UCMR 5 報告 PFAS 數據。</p>
+      <p style="margin-top:10px;"><strong>方法論：</strong>整合工廠登記、軍事基地位置、廢水處理廠、危廢場址等<strong>已知風險因子</strong>進行空間分析與優先排序。</p>
+      <a class="source-link" href="https://www.ewg.org/interactive-maps/pfas_contamination/map/" target="_blank">→ 開啟 EWG 互動地圖</a>
+    </div>
+  </div>
+
+  <!-- 案例 2：加州 ML -->
+  <div class="case-card">
+    <div class="case-img">
+      <div style="width:100%;height:100%;background:linear-gradient(135deg,#2d6b54,#d4845a);display:flex;flex-direction:column;align-items:center;justify-content:center;color:white;padding:20px;text-align:center;">
+        <div style="font-size:56px;font-weight:800;margin-bottom:8px;">99%</div>
+        <div style="font-size:22px;font-weight:600;">AUROC 預測準確度</div>
+        <div style="font-size:16px;opacity:0.8;margin-top:4px;">加州地下水 PFAS｜Random Forest</div>
+        <div style="margin-top:16px;padding:8px 16px;border:2px solid rgba(255,255,255,0.5);border-radius:6px;font-size:14px;">25,000 筆觀測 × 4,200 口井 × 35 種 PFAS</div>
+      </div>
+    </div>
+    <div class="case-text">
+      <h3>加州 — 機器學習預測 35 種 PFAS 地下水分布</h3>
+      <p>Dong, Tsai & Olivares（2023）發表於 ACS ES&T Water。使用 23 個公開數據集（2016-2022），建立加州全州地下水 PFAS 資料庫，包含<strong> 25,000 筆觀測、4,200 口監測井</strong>。</p>
+      <p style="margin-top:10px;"><strong>輸入特徵：</strong>污染源位置、氣象、空氣品質、土壤、水文、地下水水質。<br><strong>模型：</strong>Random Forest + ADASYN 過採樣。<br><strong>成果：</strong>總 PFAS 篩選 AUROC 99%，個別 PFAS 預測 AUROC 73-100%。成功辨識出原始調查遺漏的新熱點。</p>
+      <a class="source-link" href="https://pubs.acs.org/doi/10.1021/acsestwater.3c00134" target="_blank">→ 閱讀原始論文（ACS ES&T Water）</a>
+    </div>
+  </div>
+
+  <!-- 案例 3：FOCUS -->
+  <div class="case-card">
+    <div class="case-img">
+      <div style="width:100%;height:100%;background:linear-gradient(135deg,#1a3a5c,#6b8f7e);display:flex;flex-direction:column;align-items:center;justify-content:center;color:white;padding:20px;text-align:center;">
+        <div style="font-size:40px;font-weight:800;margin-bottom:8px;">FOCUS</div>
+        <div style="font-size:18px;font-weight:600;">地理空間深度學習框架</div>
+        <div style="font-size:15px;opacity:0.8;margin-top:8px;">衛星影像 + 水文 + 土地利用</div>
+        <div style="margin-top:16px;padding:8px 16px;border:2px solid rgba(255,255,255,0.5);border-radius:6px;font-size:14px;">直接輸入衛星影像柵格，保留空間依賴性</div>
+      </div>
+    </div>
+    <div class="case-text">
+      <h3>FOCUS — 衛星影像 + 深度學習預測 PFAS 水體污染</h3>
+      <p>Khan et al.（2025）發表於 arXiv。開發地理空間深度學習框架，整合<strong>衛星影像、水文連通性、土地覆蓋、污染源距離</strong>，預測大範圍地表水 PFAS 污染。</p>
+      <p style="margin-top:10px;"><strong>關鍵創新：</strong>可直接輸入衛星影像柵格格式，保留空間依賴性，減少特徵工程。效能優於 Kriging 和傳統污染物傳輸模擬。<br><strong>應用：</strong>產出篩選級風險地圖，指引後續採樣優先順序。</p>
+      <a class="source-link" href="https://arxiv.org/abs/2502.14894" target="_blank">→ 閱讀原始論文（arXiv）</a>
+    </div>
+  </div>
+
+  <!-- 案例 4：澳洲 -->
+  <div class="case-card">
+    <div class="case-img">
+      <div style="width:100%;height:100%;background:linear-gradient(135deg,#d4845a,#1a3a5c);display:flex;flex-direction:column;align-items:center;justify-content:center;color:white;padding:20px;text-align:center;">
+        <div style="font-size:56px;font-weight:800;margin-bottom:8px;">28</div>
+        <div style="font-size:22px;font-weight:600;">國防部完成調查場址</div>
+        <div style="font-size:16px;opacity:0.8;margin-top:4px;">澳洲 PFAS 管理計畫</div>
+        <div style="margin-top:16px;padding:8px 16px;border:2px solid rgba(255,255,255,0.5);border-radius:6px;font-size:14px;">軍事基地 + 機場 + 消防訓練場</div>
+      </div>
+    </div>
+    <div class="case-text">
+      <h3>澳洲 — PFAS 國家環境管理計畫（NEMP）</h3>
+      <p>澳洲聯邦、各州及紐西蘭政府聯合制定 PFAS NEMP，為國家級 PFAS 污染管理指引。國防部已完成全部 <strong>28 個受影響場址</strong>的詳細環境調查，每個場址都有專屬的整治與管理計畫。</p>
+      <p style="margin-top:10px;"><strong>優先場址：</strong>RAAF 空軍基地、Perth 機場、消防訓練場等。<br><strong>方法：</strong>以已知 AFFF 使用歷史 + GIS 空間分析鎖定高風險區域，再進行定向採樣。</p>
+      <a class="source-link" href="https://pfas.australianmap.net/" target="_blank">→ 開啟澳洲 PFAS 污染地圖</a>
+      <a class="source-link" href="https://www.defence.gov.au/about/locations-property/pfas" target="_blank" style="margin-left:16px;">→ 澳洲國防部 PFAS 計畫</a>
+    </div>
+  </div>
+</section>
+
+<!-- ===== S5 文獻回顧 ===== -->
+<section class="slide" id="s5">
+  <div class="slide-number">5</div>
+  <h2>文獻回顧：關鍵技術與成果</h2>
+  <p class="subtitle">AI 風險預測 + 遙測輔助驗證的技術基礎</p>
+  <table class="styled-table">
+    <thead><tr><th style="width:20%">技術</th><th style="width:22%">代表文獻</th><th>關鍵成果</th><th style="width:10%">TRL</th></tr></thead>
+    <tbody>
+      <tr><td><strong>ML 地下水 PFAS 預測</strong></td><td>Dong et al. 2023 (ACS)</td><td>Random Forest 篩選總 PFAS，AUROC 99%。成功辨識調查遺漏的熱點。</td><td><span class="tag tag-green">6-7</span></td></tr>
+      <tr><td><strong>深度學習空間預測</strong></td><td>Khan et al. 2025 (FOCUS)</td><td>衛星影像直接輸入 DL 模型，預測地表水 PFAS。優於 Kriging。</td><td><span class="tag tag-green">5-6</span></td></tr>
+      <tr><td><strong>貝氏網路風險分析</strong></td><td>Frontiers Env Sci 2022</td><td>Machine-learned Bayesian Networks，AUC > 0.96。關鍵因子：距工廠距離、掩埋場、土地利用。</td><td><span class="tag tag-green">5-6</span></td></tr>
+      <tr><td><strong>GIS 農地風險圖</strong></td><td>WJARR 2025</td><td>土壤採樣 + GIS 空間分析建立農地 PFAS 風險圖，結合土地利用、地形、水文。</td><td><span class="tag tag-green">6-7</span></td></tr>
+      <tr><td><strong>Random Forest 魚體預測</strong></td><td>ACS ES&T 2023</td><td>地理空間數據預測哥倫比亞河流域魚體 PFAS，輸入：土地覆蓋 + 距污染源距離。</td><td><span class="tag tag-green">5-6</span></td></tr>
+      <tr><td><strong>HSI 植被壓力偵測</strong></td><td>NASA / USGS 多篇</td><td>重金屬/石油烴造成植被壓力可偵測（93-98%），但 PFAS 專用資料庫為全球空白。</td><td><span class="tag tag-yellow">3-4</span></td></tr>
+      <tr><td><strong>多光譜衛星監測</strong></td><td>Sentinel-2 / FORMOSAT</td><td>NDVI、NDWI 等植被指數可反映植被健康，空間解析度 10m（Sentinel-2）至 1m（FORMOSAT-8）。</td><td><span class="tag tag-green">8-9</span></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ===== S6 策略 ===== -->
+<section class="slide" id="s6">
+  <div class="slide-number">6</div>
+  <h2>我們的策略：AI 預測 + 遙測驗證</h2>
+  <p class="subtitle">兩階段分工，各司其職</p>
+
+  <div class="card-grid">
+    <div class="card" style="grid-column:span 2;border-color:var(--teal);">
+      <h3 style="color:var(--navy);font-size:24px;">階段一：AI 風險預測模型</h3>
+      <p>將台灣已知的空間資訊餵給機器學習模型，預測「哪裡最可能有 PFAS 污染」。</p>
+      <div class="card-grid" style="margin-top:16px;gap:16px;">
+        <div style="background:white;padding:18px;border-radius:8px;border:1px solid #ddd;">
+          <p style="font-weight:700;color:var(--navy);font-size:18px;margin-bottom:8px;">輸入特徵</p>
+          <ul>
+            <li>科學園區 / 工業區位置</li>
+            <li>消防訓練場座標</li>
+            <li>掩埋場分布</li>
+            <li>污水處理廠放流口</li>
+            <li>地下水流向與水文</li>
+            <li>土地使用歷史</li>
+            <li>國環院 160 組已知濃度</li>
+          </ul>
+        </div>
+        <div style="background:white;padding:18px;border-radius:8px;border:1px solid #ddd;">
+          <p style="font-weight:700;color:var(--navy);font-size:18px;margin-bottom:8px;">輸出</p>
+          <p style="font-size:28px;font-weight:800;color:var(--teal-dark);margin:16px 0;">PFAS 污染風險熱點圖</p>
+          <p>全台灣網格化風險評分，標示「高 / 中 / 低」風險區域，指引後續採樣優先順序。</p>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>階段二：遙測交叉驗證</h3>
+      <p>在 AI 預測的高風險 vs 低風險區域，用 UAV 飛行高光譜 / 多光譜影像，以及調閱 Sentinel-2 等衛星歷史影像，尋找：</p>
+      <ul style="margin-top:10px;">
+        <li>植被指數（NDVI、NDRE）異常</li>
+        <li>土壤含水量/反射率差異</li>
+        <li>多時相變化趨勢</li>
+      </ul>
+      <p style="margin-top:14px;"><strong>目標：</strong>驗證遙測影像特徵與已知 PFAS 濃度之間是否存在統計相關性。</p>
+      <span class="tag tag-blue">探索性研究，非作業化部署</span>
+    </div>
+  </div>
+</section>
+
+<!-- ===== S7 台灣條件 ===== -->
+<section class="slide" id="s7">
+  <div class="slide-number">7</div>
+  <h2>台灣可用數據與資源盤點</h2>
+  <p class="subtitle">建構 AI 模型需要的資料，台灣大部分已有</p>
+  <div class="card-grid">
+    <div class="card" style="border-color:var(--green-check);">
+      <h3 style="color:var(--green-check);">✓ 可用於 AI 模型的數據</h3>
+      <ul>
+        <li>國環院 160 組土壤 PFAS 數據（NIEA S501）</li>
+        <li>工廠登記與毒化物運作紀錄（化學署）</li>
+        <li>消防訓練場位置（消防署）</li>
+        <li>掩埋場與廢棄物處理場址清冊（環境部）</li>
+        <li>地下水監測井數據（全國水質監測網）</li>
+        <li>土地使用分區圖（國土測繪中心）</li>
+        <li>水文地質圖（地調所 / 水利署）</li>
+        <li>客雅溪 PFAS 歷史數據（台大林郁真團隊）</li>
+      </ul>
+    </div>
+    <div class="card" style="border-color:var(--green-check);">
+      <h3 style="color:var(--green-check);">✓ 可用於遙測驗證的資源</h3>
+      <ul>
+        <li>Sentinel-2 免費多光譜衛星（10m，每 5 天重訪）</li>
+        <li>FORMOSAT-8 高解析衛星（1m，預計每日 3 次）</li>
+        <li>晶瑞光高光譜無人機（商用租賃可得）</li>
+        <li>DJI / 其他多光譜無人機（成熟市場）</li>
+        <li>成大、交大、中央等遙測研究團隊</li>
+        <li>AI / ML 研究人才充沛</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ===== S8 場址 ===== -->
+<section class="slide" id="s8">
+  <div class="slide-number">8</div>
+  <h2>場址類型與驗證優先序</h2>
+  <p class="subtitle">先期試驗的場址選擇</p>
+  <table class="styled-table">
+    <thead><tr><th>場址類型</th><th>已知資料</th><th>PFAS 濃度</th><th>遙測條件</th><th>建議</th></tr></thead>
+    <tbody>
+      <tr><td><strong>客雅溪流域（竹科下游）</strong></td><td>台大 10 年數據、魚體 200× 背景值</td><td style="color:var(--red);font-weight:700;">高</td><td>河岸植被連續，適合 UAV</td><td><span class="tag tag-green">首選</span></td></tr>
+      <tr><td><strong>科學園區周邊農地</strong></td><td>竹科/中科/南科灌溉區</td><td style="color:var(--orange);font-weight:700;">中～高</td><td>農作物光譜資料豐富</td><td><span class="tag tag-green">次選</span></td></tr>
+      <tr><td><strong>消防訓練場周邊</strong></td><td>各縣市消防局訓練中心</td><td style="color:var(--red);font-weight:700;">極高</td><td>核心區可能無植被</td><td><span class="tag tag-yellow">擴充</span></td></tr>
+      <tr><td><strong>已封閉掩埋場</strong></td><td>各縣市掩埋場</td><td style="color:var(--orange);font-weight:700;">中</td><td>覆土後有植被</td><td><span class="tag tag-yellow">擴充</span></td></tr>
+    </tbody>
+  </table>
+  <div class="highlight-box"><h4>場址選擇邏輯</h4><p>需同時具備：① 有已知 PFAS 濃度（地真值）、② 適合 UAV / 衛星觀測、③ 有乾淨對照區。<strong>客雅溪三項全滿足</strong>，且有學術合作基礎。</p></div>
+</section>
+
+<!-- ===== S9 先期驗證 ===== -->
+<section class="slide" id="s9">
+  <div class="slide-number">9</div>
+  <h2>先期驗證計畫設計</h2>
+  <p class="subtitle">請化學署提供國環院資料，我們飛 UAV + 調閱衛星影像找關聯性</p>
+  <div class="highlight-box success">
+    <h4>核心問題</h4>
+    <p>「國環院已知的 PFAS 高濃度點位，在 UAV 高光譜影像和 Sentinel-2 多光譜衛星影像中，<strong>是否呈現可辨識的特徵差異？</strong>」</p>
+  </div>
+  <div class="timeline" style="margin-top:32px;">
+    <div class="timeline-item">
+      <h4>Step 1：取得國環院數據並篩選驗證點位（第 1-2 月）</h4>
+      <p>向化學署申請國環院 160 組土壤 PFAS 數據（座標、濃度、PFAS 種類）。篩選「高濃度 / 中濃度 / 未檢出」三組各 5-10 個點位。以 Google Earth 確認現場植被、水體、建物狀況。<strong>優先鎖定客雅溪流域。</strong></p>
+    </div>
+    <div class="timeline-item">
+      <h4>Step 2：調閱衛星歷史影像（第 2-3 月）</h4>
+      <p>調閱各點位的 <strong>Sentinel-2</strong>（10m 多光譜）歷史影像（近 3-5 年），計算 NDVI、NDRE、NDWI、BSI 等指數的時間序列。若 FORMOSAT-8 資料可取得，同步調閱 1m 級影像。比較高濃度 vs 未檢出點位的指數差異。</p>
+    </div>
+    <div class="timeline-item">
+      <h4>Step 3：UAV 高光譜飛行（第 3-4 月）</h4>
+      <p>租用搭載高光譜相機（VNIR-SWIR）的無人機，對篩選出的 15-20 個點位進行航拍。同步記錄氣象數據。取得比衛星更高空間解析度（公分級）的光譜數據。</p>
+    </div>
+    <div class="timeline-item">
+      <h4>Step 4：統計分析與 AI 建模（第 4-5 月）</h4>
+      <p>將遙測特徵（光譜指數、紋理特徵、多時相變化）與已知 PFAS 濃度配對，進行相關性分析（Pearson / Spearman / R²）。以 Random Forest 建立分類模型，ROC 曲線評估「能否區分有/無污染」。</p>
+    </div>
+    <div class="timeline-item">
+      <h4>Step 5：結論報告與下階段建議（第 6 月）</h4>
+      <p>明確回答：① 衛星/UAV 影像特徵與 PFAS 濃度是否有統計顯著關聯？② 哪些指數最有判別力？③ 值不值得進入第二期？若 R² > 0.5 且 AUC > 0.8，建議擴大驗證。否則，聚焦 AI 風險預測路線。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== S10 預算 ===== -->
+<section class="slide" id="s10">
+  <div class="slide-number">10</div>
+  <h2>預算與時程概估</h2>
+  <p class="subtitle">先期驗證計畫（6 個月）｜總經費 390 萬元</p>
+  <table class="styled-table">
+    <thead><tr><th>項目</th><th>說明</th><th style="width:16%;">概估（萬元）</th></tr></thead>
+    <tbody>
+      <tr><td><strong>高光譜無人機飛行委外</strong></td><td>委託利泓科技（Rightek，Headwall 台灣代理）搭載 Nano-Hyperspec 執行航拍，30 萬/次 × 2 次 (初步預估)</td><td style="font-weight:700;">60</td></tr>
+      <tr><td><strong>資料蒐集、場址盤點與點位調查</strong></td><td>彙整工廠登記、消防訓練場、掩埋場、地下水監測井、土地利用與歷年 PFAS 調查資料，辦理候選場址盤點、圖資清理、點位調查與外業規劃</td><td style="font-weight:700;">40</td></tr>
+      <tr><td><strong>既有檢測資料整理與資料庫建置</strong></td><td>不執行現地採樣與樣品分析，改以既有 PFAS 檢測成果為基礎，辦理濃度資料彙整、格式標準化、屬性欄位清整、資料庫建置與品質檢核</td><td style="font-weight:700;">20</td></tr>
+      <tr><td><strong>AI 風險預測模型開發</strong></td><td>Random Forest / 深度學習模型建置、訓練與驗證，整合污染源、土地利用、水文與場址特徵，辦理模型調參、交叉驗證、熱點排序與情境模擬</td><td style="font-weight:700;">60</td></tr>
+      <tr><td><strong>遙測影像分析與光譜特徵萃取</strong></td><td>重點在分析而非購置影像，包括高光譜航拍成果前處理、大氣與幾何校正、光譜特徵萃取、植生/土壤/水體指數計算、多時相衛星影像判釋與異常訊號比對</td><td style="font-weight:700;">60</td></tr>
+      <tr><td><strong>GIS 空間資料整合與風險圖繪製</strong></td><td>整合工廠登記、消防訓練場、掩埋場、地下水流向、土地利用與監測資料，建立空間資料庫、風險熱點圖、點位分級成果與專題圖資</td><td style="font-weight:700;">80</td></tr>
+      <tr><td><strong>GIS 平台建置與成果上架</strong></td><td>建置 GIS 成果展示平台，以展示場址分布、PFAS 濃度、遙測指標與風險分級成果為主，提供基本圖層切換、查詢與成果瀏覽介面</td><td style="font-weight:700;">30</td></tr>
+      <tr><td><strong>統計驗證、成果統整與報告撰寫</strong></td><td>辦理既有濃度資料與遙測特徵之相關性分析、模型績效評估、GIS/RS 整合判釋、圖表與簡報製作、期中期末報告撰寫，並提出下一階段場址驗證建議</td><td style="font-weight:700;">40</td></tr>
+      <tr style="background:var(--teal-light);"><td colspan="2" style="font-weight:700;color:var(--navy);font-size:22px;">合計</td><td style="font-weight:800;color:var(--teal-dark);font-size:24px;">390 萬</td></tr>
+    </tbody>
+  </table>
+  <div class="kpi-row" style="margin-top:32px;">
+    <div class="kpi"><div class="num">390萬</div><div class="unit">計畫總經費</div></div>
+    <div class="kpi"><div class="num">10</div><div class="unit">個月執行期</div></div>
+    <div class="kpi"><div class="num">2</div><div class="unit">次 UAV 高光譜飛行</div></div>
+    <div class="kpi"><div class="num">4</div><div class="unit">大分析模組</div></div>
+  </div>
+</section>
+
+<!-- ===== S11 預期成果 ===== -->
+<section class="slide" id="s11">
+  <div class="slide-number">11</div>
+  <h2>預期成果與決策節點</h2>
+  <p class="subtitle">6 個月後我們會知道什麼</p>
+  <div class="card-grid">
+    <div class="card" style="border-color:var(--green-check);">
+      <h3 style="color:var(--green-check);">情境 A：有相關性</h3>
+      <p>若遙測特徵與 PFAS 濃度 R² > 0.5 且 AUC > 0.8：</p>
+      <ul style="margin-top:10px;">
+        <li>證明衛星/UAV 影像可輔助篩查</li>
+        <li>建議進入第二期：擴大場址驗證</li>
+        <li>同步發展 AI 風險預測模型</li>
+        <li>目標：建立台灣 PFAS 風險熱點圖</li>
+      </ul>
+      <span class="tag tag-green">擴大投資</span>
+    </div>
+    <div class="card" style="border-color:var(--orange);">
+      <h3 style="color:var(--orange);">情境 B：無顯著相關</h3>
+      <p>若遙測特徵與 PFAS 濃度無統計顯著關聯：</p>
+      <ul style="margin-top:10px;">
+        <li>確認遙測路線不可行（有科學價值的否定結論）</li>
+        <li>全力聚焦 AI 風險預測路線</li>
+        <li>以空間資訊＋地面採樣建立風險圖</li>
+        <li>省下後續遙測設備投資</li>
+      </ul>
+      <span class="tag tag-yellow">調整方向</span>
+    </div>
+  </div>
+  <div class="highlight-box" style="margin-top:28px;">
+    <h4>無論哪種結果，計畫都有價值</h4>
+    <p>情境 A 開啟新技術路線；情境 B 避免無效投資。<strong>花 110-185 萬回答一個清楚的問題，比花 2000 萬做一個方向不明的大計畫更有效率。</strong></p>
+  </div>
+</section>
+
+<!-- ===== S12 參考文獻 ===== -->
+<section class="slide" id="s12">
+  <div class="slide-number">12</div>
+  <h2>參考文獻</h2>
+  <p class="subtitle">本分析引用之關鍵資料來源</p>
+  <div style="font-size:17px; line-height:2.2; color:#555;">
+    <p><strong style="color:var(--navy);">AI 風險預測</strong></p>
+    <p>1. Dong, Tsai & Olivares, "Prediction of 35 PFASs in California Groundwater Using ML," <em>ACS ES&T Water</em>, 2023</p>
+    <p>2. Khan et al., "FOCUS: Geospatial Deep Learning for Surface Water PFAS Prediction," <em>arXiv:2502.14894</em>, 2025</p>
+    <p>3. Frontiers Env Sci, "Predicting short-chain PFAS using machine-learned Bayesian networks," 2022</p>
+    <p>4. ACS ES&T, "Random Forest to Predict PFAS in Fish Tissue, Columbia River Basin," 2023</p>
+    <p>5. WJARR, "Developing spatial risk maps of PFAS in farmlands using GIS," 2025</p>
+    <p>6. ScienceDirect, "AI-based technologies for PFAS detection, monitoring, and management," 2025</p>
+    <p style="margin-top:14px;"><strong style="color:var(--navy);">國際管理案例</strong></p>
+    <p>7. EWG, "PFAS Contamination Crisis: 9,728 Sites in 50 States," Interactive Map, 2025-2026</p>
+    <p>8. U.S. EPA, "PFAS Strategic Roadmap: Three Years of Progress," 2024</p>
+    <p>9. Australia DCCEEW, "PFAS National Environmental Management Plan (NEMP)"</p>
+    <p>10. Australia Defence, "PFAS Investigation and Management Program," 28 sites</p>
+    <p style="margin-top:14px;"><strong style="color:var(--navy);">PFAS 毒理與政策</strong></p>
+    <p>11. IARC, "Carcinogenicity of PFOA and PFOS," <em>The Lancet Oncology</em>, 2023/11</p>
+    <p>12. 環境部化學署, PFAS 管理行動計畫 2024 執行成果</p>
+    <p>13. 環境部, 飲用水水質標準增訂 PFAS 標準, 2024</p>
+    <p style="margin-top:14px;"><strong style="color:var(--navy);">遙測與台灣資源</strong></p>
+    <p>14. USGS, "Hyperspectral Remote Sensing of Vegetation"</p>
+    <p>15. TASA, "FORMOSAT-8 Program"</p>
+    <p>16. 林郁真（台大）, 客雅溪 PFAS 調查系列研究, 2009-2024</p>
+    <p>17. 王家麟（中央大學）, 氣態全氟化合物監測, 環工會刊</p>
+    <p>18. 看守台灣, 從零開始認識 PFAS 系列, 2024</p>
+  </div>
+</section>
+
+<div class="footer">環境部化學物質管理署 ｜ PFAS AI 風險預測與遙測驗證可行性分析 ｜ 2026 年 4 月</div>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  const navSelect = document.getElementById('nav-select');
+  const progressBar = document.getElementById('progressBar');
+  function onScroll() {
+    const scrollTop = window.scrollY;
+    const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+    progressBar.style.width = ((scrollTop / docHeight) * 100) + '%';
+    slides.forEach((s) => {
+      const rect = s.getBoundingClientRect();
+      if (rect.top < window.innerHeight * 0.75 && rect.bottom > 0) s.classList.add('visible');
+      if (rect.top < window.innerHeight * 0.5 && rect.bottom > window.innerHeight * 0.3) navSelect.value = s.id;
+    });
+  }
+  function goSlide(id) { document.getElementById(id).scrollIntoView({ behavior: 'smooth' }); }
+  window.addEventListener('scroll', onScroll);
+  window.addEventListener('load', () => { onScroll(); slides[0].classList.add('visible'); });
+</script>
+</body>
+</html>
